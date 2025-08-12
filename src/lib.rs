@@ -1,7 +1,7 @@
 use std::{error::Error, fs, io, path::PathBuf};
 
 use gcp_auth::{CustomServiceAccount, TokenProvider};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 mod domain;
@@ -27,6 +27,18 @@ impl FcmService {
             credential_file: credential_file.into(),
         }
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FcmError {
+    #[error("{status} {message}")]
+    Http { status: StatusCode, message: String },
+    #[error(transparent)]
+    Other(#[from] std::boxed::Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Auth(#[from] gcp_auth::Error),
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
 }
 
 /// Service for sending Firebase Cloud Messaging (FCM) notifications using the v1 API.
@@ -75,7 +87,7 @@ impl FcmService {
     /// - Authentication with GCP fails
     /// - The HTTP request to FCM fails
     /// - The FCM API returns an unsuccessful status
-    pub async fn send_notification(&self, message: FcmMessage) -> Result<(), Box<dyn Error>> {
+    pub async fn send_notification(&self, message: FcmMessage) -> Result<(), FcmError> {
         let project_id = self.get_project_id()?;
         let client = Client::new();
         let credentials_path = PathBuf::from(&self.credential_file);
@@ -94,23 +106,21 @@ impl FcmService {
             .send()
             .await?;
 
+        let status = response.status();
         if response.status().is_success() {
             response.text().await?;
 
             Ok(())
         } else {
-            let error_text = response.text().await?;
-            Err(format!("Failed to send notification: {error_text:#?}").into())
+            let message = response.text().await?;
+            Err(FcmError::Http { status, message })
         }
     }
 }
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, io::Write};
-
-    use tempfile;
-
     use super::*;
+    use std::{fs::File, io::Write};
 
     fn setup_dummy_credentials(temp_dir: &tempfile::TempDir) -> String {
         let credential_path = temp_dir.path().join("service-account.json");

@@ -27,8 +27,7 @@ where
 {
     if *value < 0.0 || *value > 1.0 {
         return Err(serde::ser::Error::custom(format!(
-            "Color value {} must be between 0.0 and 1.0",
-            value
+            "Color value {value} must be between 0.0 and 1.0",
         )));
     }
     serializer.serialize_f32(*value)
