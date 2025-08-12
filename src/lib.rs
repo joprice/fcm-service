@@ -33,12 +33,16 @@ impl FcmService {
 pub enum FcmError {
     #[error("{status} {message}")]
     Http { status: StatusCode, message: String },
-    #[error(transparent)]
-    Other(#[from] std::boxed::Box<dyn std::error::Error>),
+    //#[error(transparent)]
+    //Other(#[from] std::boxed::Box<dyn std::error::Error>),
     #[error(transparent)]
     Auth(#[from] gcp_auth::Error),
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 
 /// Service for sending Firebase Cloud Messaging (FCM) notifications using the v1 API.
@@ -68,7 +72,7 @@ pub enum FcmError {
 /// ```
 impl FcmService {
     /// Extracts the project ID from the service account credential file.
-    fn get_project_id(&self) -> Result<String, Box<dyn Error>> {
+    fn get_project_id(&self) -> Result<String, FcmError> {
         let content = fs::read_to_string(&self.credential_file)?;
         let json: Value = serde_json::from_str(&content)?;
 
@@ -154,8 +158,8 @@ mod tests {
         let result = service.get_project_id();
         assert!(result.is_err());
         assert!(matches!(
-            result.unwrap_err().downcast_ref::<io::Error>(),
-            Some(err) if err.kind() == io::ErrorKind::NotFound
+            result.unwrap_err(),//.downcast_ref::<io::Error>(),
+            FcmError::IO(err) if err.kind() == io::ErrorKind::NotFound
         ));
     }
 
