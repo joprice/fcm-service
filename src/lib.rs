@@ -1,4 +1,4 @@
-use std::{error::Error, fs, io, path::PathBuf};
+use std::{fs, io, path::PathBuf};
 
 use gcp_auth::{CustomServiceAccount, TokenProvider};
 use reqwest::{Client, StatusCode};
@@ -18,12 +18,14 @@ pub struct FcmPayload {
 }
 
 pub struct FcmService {
+    client: Client,
     pub credential_file: String,
 }
 
 impl FcmService {
-    pub fn new(credential_file: impl Into<String>) -> Self {
+    pub fn new(client: Client, credential_file: impl Into<String>) -> Self {
         Self {
+            client,
             credential_file: credential_file.into(),
         }
     }
@@ -93,7 +95,6 @@ impl FcmService {
     /// - The FCM API returns an unsuccessful status
     pub async fn send_notification(&self, message: FcmMessage) -> Result<(), FcmError> {
         let project_id = self.get_project_id()?;
-        let client = Client::new();
         let credentials_path = PathBuf::from(&self.credential_file);
         // let service_account = CustomServiceAccount::from_file(credentials_path)?;
         let service_account = CustomServiceAccount::from_file(credentials_path)?;
@@ -103,7 +104,8 @@ impl FcmService {
 
         let payload = FcmPayload { message };
 
-        let response = client
+        let response = self
+            .client
             .post(&url)
             .bearer_auth(token.as_str())
             .json(&payload)
